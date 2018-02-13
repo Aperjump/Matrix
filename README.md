@@ -1,5 +1,6 @@
 # Matrix
-A fast matrix library with GPU support 
+A fast matrix library with GPU support.
+
 Three components in the file:
 - CL_Base : contains most openCL operations in a simple class
 - Matrix : includes matrix manipulation using OpenCL
@@ -77,7 +78,7 @@ void pass_val(Matrix<T3, Expr3> const & other, ww_traits::_false_type)
 
 #### 2.2.3 Matrix_Add
 This class implements the add expression for lazy evalution, it supports interfaces for `Matrix` class. (But actually, this class behaves terrible in terms of computing speed).
-I use Intel corei7-7700HQ processor to record the speed adding two matrix a and b. With the change of their size, their completion time and computing power can be summarized with following picture.
+I use Intel corei7-7700HQ processor to record the speed adding two matrix a and b. With the change of their size, their completion time and computing power can be summarized with following picture. For here, `matrix size` means the length of row or col, and both matrix are square matrix. 
 ![double_add](https://raw.githubusercontent.com/Aperjump/Matrix/master/picture/double_add.png)
 
 The supporting claim for expression template is that when optimized by compiler, the code can unroll different loop and achieve code like this:
@@ -92,6 +93,8 @@ for (size_t i = 0; i < row; i++) {
 And I also test its behavior with five matrix:
 
 ![multi_add](https://raw.githubusercontent.com/Aperjump/Matrix/master/picture/multi_add.png)
+
+
 In terms of computing power, it truly helps to improve gflops but as for computing time, this can be a bit long.
 
 #### 2.2.4  Matrix_Mult_gpu
@@ -119,5 +122,7 @@ __kernel void core(const int M, const int N, const int K,
                       __global double* C)
 ```
 These three function are able to use tile method in GPU computation for any matrix size. 
-Here is my test result:
+Here is my test result on NVIDIA 1060 GPU:
 ![double_mult](https://github.com/Aperjump/Matrix/blob/master/picture/double_mult.png)
+
+## 3. SMatrix 
