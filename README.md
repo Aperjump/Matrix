@@ -90,8 +90,8 @@ for (size_t i = 0; i < row; i++) {
 }
 ```
 And I also test its behavior with five matrix:
-![multi_add](https://raw.githubusercontent.com/Aperjump/Matrix/master/picture/multi_add.png)
 
+![multi_add](https://raw.githubusercontent.com/Aperjump/Matrix/master/picture/multi_add.png)
 In terms of computing power, it truly helps to improve gflops but as for computing time, this can be a bit long.
 
 #### 2.2.4  Matrix_Mult_gpu
