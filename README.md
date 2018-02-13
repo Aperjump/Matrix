@@ -25,6 +25,7 @@ After this config finish, users can access openCL through `ww_clwrapper::_clconf
 I used two layer implementation as `boost::ublas` library. 
 #### 2.2.1 Storage
 I designed one `Storage` class for holding actual data elements. Since I've already read source code in `ublas`, this design is similar to `bounded_array` and `unbounded_array` but has less functionality. 
+
 Storage member | type | description
 -----------|---------|-----------
 _clconfig|static CL_Base| static type, includes environment objects
