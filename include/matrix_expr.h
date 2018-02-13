@@ -314,7 +314,7 @@ namespace ww_matrix
 		Matrix<T> _ret;
 	};
 	template<typename T, typename OP1, typename OP2>
-	class Matrix_Mult_gpu : Matrix_expression<Matrix_Mult_gpu_tile<T, OP1, OP2>> {
+	class Matrix_Mult_gpu : Matrix_expression<Matrix_Mult_gpu<T, OP1, OP2>> {
 	public:
 		typedef ww_traits::_true_type _incld_strg;
 		Matrix_Mult_gpu(OP1 const & op1, OP2 const & op2) : _lhs(op1),
@@ -418,16 +418,6 @@ namespace ww_matrix
 		 Matrix<T, OP2> const & rhs) {
 		return Matrix<T, Matrix_Add<T, OP1, OP2>>(Matrix_Add<T, OP1, OP2>(lhs.rep(), rhs.rep()));
 	}
-	// This supports addition in GPU(requires temp variable)
-	//Matrix<T, Matrix_Add_gpu<T, OP1, OP2>> operator + (Matrix<T, OP1> const & lhs,
-	//	Matrix<T, OP2> const & rhs) {
-	//	return Matrix<T, Matrix_Add_gpu<T, OP1, OP2>>(Matrix_Add_gpu<T, OP1, OP2>(lhs.rep(), rhs.rep()));
-	//}
-	//template<typename T, typename OP1, typename OP2>
-	//Matrix<T, Matrix_Mult_gpu<T, OP1, OP2>> operator * (Matrix<T, OP1> const & lhs,
-	//	Matrix<T, OP2> const & rhs) {
-	//	return Matrix<T, Matrix_Mult_gpu<T, OP1, OP2>>(Matrix_Mult_gpu<T, OP1, OP2>(lhs.rep(), rhs.rep()));
-	//}
 	template<typename T, typename OP1, typename OP2>
 	Matrix<T, Matrix_Mult_gpu<T, OP1, OP2>> operator * (Matrix<T, OP1> const & lhs,
 		Matrix<T, OP2> const & rhs) {
@@ -435,7 +425,7 @@ namespace ww_matrix
 	}
 };
 namespace ww_simple_matrix {
-	template<typename T>
+	template<typename T, typename Expr = std::vector<std::vector<T, std::allocator<T>>, std::allocator<T>>>
 	class SMatrix {
 	public:
 		SMatrix() = default;
@@ -443,14 +433,24 @@ namespace ww_simple_matrix {
 			_storage(row, std::vector<T>(col, 0)) { }
 		SMatrix(size_t row, size_t col, T val) : _row_size(row), _col_size(col),
 			_storage(row, std::vector<T>(col, val)) { }
-		SMatrix(std::initializer_list<std::initializer_list<T> > tmp_list): _size_row(tmp_list.size()),
-			_size_col((*tmp_list.begin()).size()), _storage(tmp_list){ }
-		SMatrix(SMatrix const & other) : _row_size(other._row_size), _col_size(other._col_size),
-			_storage(other._storage) { }
-		template<typename Expr>
-		SMatrix(Expr const & other) : _row_size(other.rw_size()), _col_size(other.cl_size()),
-			_storage(other.rw_size(), std::vector<T>(other.cl_size(), 0))
+		SMatrix(std::initializer_list<std::initializer_list<T> > tmp_list): _row_size(tmp_list.size()),
+			_col_size((*tmp_list.begin()).size()){
+			for (auto iter = tmp_list.begin(); iter != tmp_list.end(); iter++)
+			{
+				_storage.push_back(*iter);
+			}
+		}
+		template<typename T2, typename Expr2>
+		SMatrix(SMatrix<T2, Expr2> const & other) : _row_size(other.rw_size()), _col_size(other.cl_size()),
+			_storage(other.rep()) { }
+		//SMatrix(Expr const & other) : _row_size(other.rw_size()), _col_size(other.cl_size()),
+		//	_storage(other) { }
+		template<typename T2, typename Expr2>
+		SMatrix& operator= (SMatrix<T2, Expr2> const & other)
 		{
+			_row_size = other.rw_size();
+			_col_size = other.cl_size();
+			_storage(other.rw_size(), std::vector<T>(other.cl_size(), 0));
 			for (size_t i = 0; i < _row_size; i++) {
 				for (size_t j = 0; j < _col_size; j++) {
 					_storage[i][j] = other(i, j);
@@ -465,14 +465,20 @@ namespace ww_simple_matrix {
 		T& operator() (size_t i, size_t j) {
 			return _storage[i][j] + _storage[i][j];
 		}
+		Expr& rep() {
+			return _storage;
+		}
+		Expr const & rep() const {
+			return _storage;
+		}
 	private:
 		size_t _row_size;
 		size_t _col_size;
-		std::vector<std::vector<T>> _storage;
+		Expr _storage;
 	};
 	template<typename T, typename Expr1, typename Expr2>
 	class SMatrix_Add {
-		SMatrix_Add(Expr1 const & lhs, Expr2 const & rhs) : _lhs(lhs), _rhs(rhs) { }
+		SMatrix_Add(Expr1 const & lhs, Expr2 const & rhs) : _lhs(lhs), _rhs(rhs) {	}
 		T operator() (size_t i, size_t j) const {
 			return _lhs(i,j)+ _rhs(i,j);
 		}
@@ -482,8 +488,8 @@ namespace ww_simple_matrix {
 		size_t rw_size() { return _lhs.rw_size(); }
 		size_t cl_size() { return _lhs.cl_size(); }
 	private:
-		Expr1 _lhs;
-		Expr2 _rhs;
+		Expr1 const & _lhs;
+		Expr2 const & _rhs;
 	};
 	template<typename T, typename Expr1, typename Expr2>
 	class SMatrix_Mul {
@@ -492,7 +498,7 @@ namespace ww_simple_matrix {
 			T ret;
 			for (size_t k = 0; k < _lhs.cl_size(); k++)
 			{
-				T += _lhs(i, k) * _rhs(k, j);
+				ret += _lhs(i, k) * _rhs(k, j);
 			}
 			return ret;
 		}
@@ -502,8 +508,8 @@ namespace ww_simple_matrix {
 		size_t rw_size() { return _lhs.rw_size(); }
 		size_t cl_size() { return _lhs.cl_size(); }
 	private:
-		Expr1 _lhs;
-		Expr2 _rhs;
+		Expr1 const & _lhs;
+		Expr2 const & _rhs;
 	};
 	template<typename T, typename Expr1, typename Expr2>
 	SMatrix<T, SMatrix_Add<T, Expr1, Expr2>> operator + (SMatrix<T, Expr1> const & lhs,
@@ -511,7 +517,7 @@ namespace ww_simple_matrix {
 		return SMatrix<T, SMatrix_Add<T, Expr1, Expr2>>(SMatrix_Add<T, Expr1, Expr2>(lhs.rep(), rhs.rep()));
 	}
 	template<typename T, typename Expr1, typename Expr2>
-	SMatrix<T, SMatrix_Mul<T, Expr1, Expr2>> operator + (SMatrix<T, Expr1> const & lhs,
+	SMatrix<T, SMatrix_Mul<T, Expr1, Expr2>> operator * (SMatrix<T, Expr1> const & lhs,
 		SMatrix<T, Expr2> const & rhs) {
 		return SMatrix<T, SMatrix_Mul<T, Expr1, Expr2>>(SMatrix_Mul<T, Expr1, Expr2>(lhs.rep(), rhs.rep()));
 	}
