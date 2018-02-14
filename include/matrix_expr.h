@@ -12,6 +12,9 @@
 #define CEIL_DIV(x,y) ((x) + (y) - 1) / (y)
 #define TS 32
 #define WPT 8
+#define USE_GPU
+#define PRINT
+
 namespace ww_clwrapper {
 	cl_platform_id choose_platform(const std::string& pltfrm_name);
 	// offset is device's position in a vector<cl_device_id>
@@ -60,7 +63,6 @@ namespace ww_matrix
 	class Storage {
 	public:
 		Storage() = default;
-		//static CL_Base _clconfig;
 		Storage(size_t row_size, size_t col_size) : _row_size(row_size), _col_size(col_size),
 			_buffer_available(false), _val_array(new T[row_size * col_size]) { }
 		Storage(size_t row_size, size_t col_size, T val) : _row_size(row_size), _col_size(col_size),
@@ -72,7 +74,7 @@ namespace ww_matrix
 		}
 		~Storage()
 		{
-			// Need to evaluate this release later
+			// test whether used buffer
 			if (_buffer_available)
 				clReleaseMemObject(_buffer);
 		}
@@ -355,15 +357,15 @@ namespace ww_matrix
 			err = clSetKernelArg(padding_b, 3, sizeof(int), (void*)&(N_Ex));
 			err = clSetKernelArg(padding_b, 4, sizeof(cl_mem), (void*)&(rhs_buffer));
 			err = clSetKernelArg(padding_b, 5, sizeof(cl_mem), (void*)&(rhs_pad));
-
-			cl_kernel Kernel = clCreateKernel(ww_clwrapper::_clconfig._program, ker1, &err);
+			// core function
+			cl_kernel Kernel = clCreateKernel(ww_clwrapper::_clconfig._program, "core", &err);
 			err = clSetKernelArg(Kernel, 0, sizeof(int), (void*)&M_Ex);
 			err = clSetKernelArg(Kernel, 1, sizeof(int), (void*)&N_Ex);
 			err = clSetKernelArg(Kernel, 2, sizeof(int), (void*)&K_Ex);
 			err = clSetKernelArg(Kernel, 3, sizeof(cl_mem), (void*)&(lhs_pad));
 			err = clSetKernelArg(Kernel, 4, sizeof(cl_mem), (void*)&(rhs_pad));
 			err = clSetKernelArg(Kernel, 5, sizeof(cl_mem), (void*)&(ret_pad));
-
+			// return padding matrix
 			cl_kernel remove_c = clCreateKernel(ww_clwrapper::_clconfig._program, "return_padding", &err);
 			err = clSetKernelArg(remove_c, 0, sizeof(int), (void*)&M_Ex);
 			err = clSetKernelArg(remove_c, 1, sizeof(int), (void*)&N_Ex);
@@ -424,12 +426,27 @@ namespace ww_matrix
 		Matrix<T>  _rhs;
 		Matrix<T> _ret;
 	};
+#ifdef USE_GPU
 	template<typename T, typename OP1, typename OP2>
 	Matrix<T, Matrix_Add_gpu<T, OP1, OP2>> operator + (Matrix<T, OP1> const & lhs,
 		 Matrix<T, OP2> const & rhs) {
 		assert(lhs.rw_size() == rhs.rw_size() && lhs.cl_size() == rhs.cl_size());
+#ifdef PRINT
+		printf("Use Matrix_Add_gpu\n");
+#endif
 		return Matrix<T, Matrix_Add_gpu<T, OP1, OP2>>(Matrix_Add_gpu<T, OP1, OP2>(lhs.rep(), rhs.rep()));
 	}
+#else
+	template<typename T, typename OP1, typename OP2>
+	Matrix<T, Matrix_Add<T, OP1, OP2>> operator + (Matrix<T, OP1> const & lhs,
+		Matrix<T, OP2> const & rhs) {
+		assert(lhs.rw_size() == rhs.rw_size() && lhs.cl_size() == rhs.cl_size());
+#ifdef PRINT
+		printf("Use Matrix_Add\n");
+#endif
+		return Matrix<T, Matrix_Add<T, OP1, OP2>>(Matrix_Add<T, OP1, OP2>(lhs.rep(), rhs.rep()));
+	}
+#endif
 	template<typename T, typename OP1, typename OP2>
 	Matrix<T, Matrix_Mult_gpu<T, OP1, OP2>> operator * (Matrix<T, OP1> const & lhs,
 		Matrix<T, OP2> const & rhs) {

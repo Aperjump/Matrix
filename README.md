@@ -7,6 +7,7 @@ Three components in the file:
 - SMatrix : a simple matrix for competency test, use expression templates to alleviate workload
 
 ## 1. CL_Base
+**OPENCL** required.
 It contains most OpenCL environment object:
 - `cl_platform_id`
 - `cl_device_id`
@@ -97,7 +98,7 @@ And I also test its behavior with five matrix:
 
 In terms of computing power, it truly helps to improve gflops but as for computing time, this can be a bit long.
 
-#### 2.2.4  Matrix_Mult_gpu
+#### 2.2.4  Matrix_Mult_gpu & Matrix_Mult_add
 
 If we want to use GPU, there must be two "real" matrixs, since we cannot send expression to GPU. There are main two issues for this matrix:
 (1) expression must convert to true matrix
@@ -125,6 +126,48 @@ These three function are able to use tile method in GPU computation for any matr
 Here is my test result on NVIDIA 1060 GPU:
 
 ![double_mult](https://github.com/Aperjump/Matrix/blob/master/picture/double_mult.png)
+
+For addition, since late evaluation can be helpful when matrix size is small, I implemented both version, one for GPU, and another for non-gpu code. 
+The kernel code is simple for addition:
+```
+__kernel void add(const int M, const int N, 
+					const __global double* A,
+					const __global double* B,
+					__global double* output)
+{
+	const int globalrow = get_global_id(0);
+	const int globalcol = get_global_id(1);
+	double tmp = 0.0;
+	tmp = A[globalcol * M + globalrow] + B[globalcol * M + globalrow];
+	output[globalcol * M + globalrow] = tmp;
+}
+```
+Implementation in `Matrix_Add_gpu` will store temporary variable, and the expression evaluation stage will be fast by just moving points. 
+Another version is `Matrix_Add` which solely used expression template, it will store both expressions until the final evaluation stage.
+```
+#ifdef USE_GPU
+	template<typename T, typename OP1, typename OP2>
+	Matrix<T, Matrix_Add_gpu<T, OP1, OP2>> operator + (Matrix<T, OP1> const & lhs,
+		 Matrix<T, OP2> const & rhs) {
+		assert(lhs.rw_size() == rhs.rw_size() && lhs.cl_size() == rhs.cl_size());
+#ifdef PRINT
+		printf("Use Matrix_Add_gpu\n");
+#endif
+		return Matrix<T, Matrix_Add_gpu<T, OP1, OP2>>(Matrix_Add_gpu<T, OP1, OP2>(lhs.rep(), rhs.rep()));
+	}
+#else
+	template<typename T, typename OP1, typename OP2>
+	Matrix<T, Matrix_Add<T, OP1, OP2>> operator + (Matrix<T, OP1> const & lhs,
+		Matrix<T, OP2> const & rhs) {
+		assert(lhs.rw_size() == rhs.rw_size() && lhs.cl_size() == rhs.cl_size());
+#ifdef PRINT
+		printf("Use Matrix_Add\n");
+#endif
+		return Matrix<T, Matrix_Add<T, OP1, OP2>>(Matrix_Add<T, OP1, OP2>(lhs.rep(), rhs.rep()));
+	}
+#endif
+```
+We can choose which Matrix addition to use by defining `USE_GPU`. 
 
 ## 3. SMatrix 
 
