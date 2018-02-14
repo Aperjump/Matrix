@@ -59,6 +59,7 @@ namespace ww_matrix
 	template<typename T>
 	class Storage {
 	public:
+		Storage() = default;
 		//static CL_Base _clconfig;
 		Storage(size_t row_size, size_t col_size) : _row_size(row_size), _col_size(col_size),
 			_buffer_available(false), _val_array(new T[row_size * col_size]) { }
@@ -267,26 +268,23 @@ namespace ww_matrix
 			assert(op1.cl_size() == op2.rw_size());
 			size_t M = _lhs.rw_size();
 			size_t N = _rhs.cl_size();
-			size_t K = _lhs.cl_size();
 			cl_int err = 0;
 			Storage<T>* lhs_expr = _lhs.get_pointer();
 			Storage<T>* rhs_expr = _rhs.get_pointer();
 			Storage<T>* ret_expr = _ret.get_pointer();
-			cl_mem lhs_buffer = lhs_expr->create_buffer(M, K, CL_MEM_READ_ONLY);
-			cl_mem rhs_buffer = rhs_expr->create_buffer(K, N, CL_MEM_READ_ONLY);
+			cl_mem lhs_buffer = lhs_expr->create_buffer(M, N, CL_MEM_READ_ONLY);
+			cl_mem rhs_buffer = rhs_expr->create_buffer(M, N, CL_MEM_READ_ONLY);
 			cl_mem ret_buffer = ret_expr->create_buffer(M, N, CL_MEM_WRITE_ONLY);
-			cl_kernel Kernel = clCreateKernel(ww_clwrapper::_clconfig._program, ker1, &err);
+			cl_kernel Kernel = clCreateKernel(ww_clwrapper::_clconfig._program, add, &err);
 			clSetKernelArg(Kernel, 0, sizeof(int), (void*)&M);
 			clSetKernelArg(Kernel, 1, sizeof(int), (void*)&N);
-			clSetKernelArg(Kernel, 2, sizeof(int), (void*)&K);
-			clSetKernelArg(Kernel, 3, sizeof(cl_mem), (void*)&(lhs_buffer));
-			clSetKernelArg(Kernel, 4, sizeof(cl_mem), (void*)&(rhs_buffer));
-			clSetKernelArg(Kernel, 5, sizeof(cl_mem), (void*)&(ret_buffer));
-			const size_t local[2] = { TS, TS };
+			clSetKernelArg(Kernel, 2, sizeof(cl_mem), (void*)&(lhs_buffer));
+			clSetKernelArg(Kernel, 3, sizeof(cl_mem), (void*)&(rhs_buffer));
+			clSetKernelArg(Kernel, 4, sizeof(cl_mem), (void*)&(ret_buffer));
 			const size_t global[2] = { M, N };
 			cl_event event = NULL;
-			clEnqueueNDRangeKernel(ww_clwrapper::_clconfig._cmdque, Kernel, 2, NULL, global, local, 0, NULL, &event);
-			ret_expr->collect_val(M, N);
+			clEnqueueNDRangeKernel(ww_clwrapper::_clconfig._cmdque, Kernel, 2, NULL, global, NULL, 0, NULL, &event);
+			ret_expr->collect_val(M, N, ret_buffer);
 			clReleaseKernel(Kernel);
 		}
 		T operator() (size_t i, size_t j) const {
@@ -304,7 +302,11 @@ namespace ww_matrix
 		size_t tt_size() const {
 			return _lhs.rw_size() * _rhs.cl_size();
 		}
-		Storage<T>* rep()
+		Storage<T>& rep()
+		{
+			return _ret.rep();
+		}
+		Storage<T> const& rep() const
 		{
 			return _ret.rep();
 		}
@@ -370,18 +372,27 @@ namespace ww_matrix
 			err = clSetKernelArg(remove_c, 4, sizeof(cl_mem), (void*)&(ret_pad));
 			err = clSetKernelArg(remove_c, 5, sizeof(cl_mem), (void*)&(ret_buffer));
 
-			const size_t local[2] = { TS, TS / WPT };
-			const size_t global[2] = { M_Ex, N_Ex / WPT };
+			const size_t local[2] = { TS, TS };
+			const size_t global[2] = { M_Ex, N_Ex };
+			const size_t local_2[2] = { TS, TS / WPT };
+			const size_t global_2[2] = { M_Ex, N_Ex / WPT };
 			const size_t lhs_Ex_global[2] = { M_Ex, K_Ex };
 			const size_t rhs_Ex_global[2] = { K_Ex, N_Ex };
 			const size_t ret_Ex_global[2] = { M_Ex, N_Ex };
 			cl_event event = NULL;
 			err = clEnqueueNDRangeKernel(ww_clwrapper::_clconfig._cmdque, padding_a, 2, NULL, lhs_Ex_global, local, 0, NULL, &event);
 			err = clEnqueueNDRangeKernel(ww_clwrapper::_clconfig._cmdque, padding_b, 2, NULL, rhs_Ex_global, local, 0, NULL, &event);
-			err = clEnqueueNDRangeKernel(ww_clwrapper::_clconfig._cmdque, Kernel, 2, NULL, global, local, 0, NULL, &event);
+			err = clEnqueueNDRangeKernel(ww_clwrapper::_clconfig._cmdque, Kernel, 2, NULL, global_2, local_2, 0, NULL, &event);
+			//T* test = (T*)malloc(M_Ex * N_Ex * sizeof(T));
+			//clEnqueueReadBuffer(ww_clwrapper::_clconfig._cmdque, ret_pad, CL_TRUE, 0, M_Ex * N_Ex * sizeof(T), test, 0, NULL, NULL);
+			//for (size_t i = 0; i < M_Ex; i++) {
+			//	for (size_t j = 0; j < N_Ex; j++) {
+			//		printf("%.1f, ", test[i * N_Ex + j]);
+			//	}
+			//	printf("\n");
+			//}
 			err = clEnqueueNDRangeKernel(ww_clwrapper::_clconfig._cmdque, remove_c, 2, NULL, ret_Ex_global, local, 0, NULL, &event);
-			T* test = (T*)malloc(M * N * sizeof(T));
-			clEnqueueReadBuffer(ww_clwrapper::_clconfig._cmdque, ret_buffer, CL_TRUE, 0, M * N * sizeof(T), test, 0, NULL, NULL);
+
 			ret_expr->collect_val(M, N, ret_buffer);
 			clReleaseKernel(Kernel);
 		}
@@ -414,88 +425,159 @@ namespace ww_matrix
 		Matrix<T> _ret;
 	};
 	template<typename T, typename OP1, typename OP2>
-	Matrix<T, Matrix_Add<T, OP1, OP2>> operator + (Matrix<T, OP1> const & lhs,
+	Matrix<T, Matrix_Add_gpu<T, OP1, OP2>> operator + (Matrix<T, OP1> const & lhs,
 		 Matrix<T, OP2> const & rhs) {
-		return Matrix<T, Matrix_Add<T, OP1, OP2>>(Matrix_Add<T, OP1, OP2>(lhs.rep(), rhs.rep()));
+		assert(lhs.rw_size() == rhs.rw_size() && lhs.cl_size() == rhs.cl_size());
+		return Matrix<T, Matrix_Add_gpu<T, OP1, OP2>>(Matrix_Add_gpu<T, OP1, OP2>(lhs.rep(), rhs.rep()));
 	}
 	template<typename T, typename OP1, typename OP2>
 	Matrix<T, Matrix_Mult_gpu<T, OP1, OP2>> operator * (Matrix<T, OP1> const & lhs,
 		Matrix<T, OP2> const & rhs) {
+		assert(lhs.cl_size() == rhs.rw_size());
 		return Matrix<T, Matrix_Mult_gpu<T, OP1, OP2>>(Matrix_Mult_gpu<T, OP1, OP2>(lhs.rep(), rhs.rep()));
 	}
 };
 namespace ww_simple_matrix {
-	template<typename T, typename Expr = std::vector<std::vector<T, std::allocator<T>>, std::allocator<T>>>
+	template<typename T>
+	class Storage {
+	public:
+		Storage() = default;
+		Storage(size_t row, size_t col) : _row_size(row), _col_size(col), _storage(row*col, 0) { }
+		Storage(size_t row, size_t col, T val) :_row_size(row), _col_size(col), _storage(row*col, val) { }
+		T operator() (size_t i, size_t j) const {
+			size_t index = i * _col_size + j;
+			return _storage[index];
+		}
+		T& operator() (size_t i, size_t j) {
+			size_t index = i * _col_size + j;
+			return _storage[index];
+		}
+		void push_back(T val) {
+			_storage.push_back(val);
+		}
+		void resize(size_t row, size_t col, T val) {
+			_row_size = row;
+			_col_size = col;
+			_storage.resize(row*col, val);
+		}
+		size_t rw_size() const { return _row_size; }
+		size_t cl_size() const { return _col_size; }
+	private:
+		size_t _row_size;
+		size_t _col_size;
+		std::vector<T> _storage;
+	};
+	template<typename T, typename Expr = Storage<T>>
 	class SMatrix {
 	public:
 		SMatrix() = default;
 		SMatrix(size_t row, size_t col) : _row_size(row), _col_size(col),
-			_storage(row, std::vector<T>(col, 0)) { }
+			_expr(row, col) { }
 		SMatrix(size_t row, size_t col, T val) : _row_size(row), _col_size(col),
-			_storage(row, std::vector<T>(col, val)) { }
+			_expr(row, col, val) { }
 		SMatrix(std::initializer_list<std::initializer_list<T> > tmp_list): _row_size(tmp_list.size()),
-			_col_size((*tmp_list.begin()).size()){
+			_col_size((*tmp_list.begin()).size()), _expr(_row_size, _col_size){
+			int i = 0;
 			for (auto iter = tmp_list.begin(); iter != tmp_list.end(); iter++)
 			{
-				_storage.push_back(*iter);
+				int j = 0;
+				for (auto iter2 = iter->begin(); iter2 != iter->end(); iter2++)
+				{
+					_expr(i, j) = *iter2;
+					j++;
+				}
+				i++;
 			}
 		}
+		SMatrix(SMatrix<T, Expr> const & other){ 
+			_row_size = other.rw_size();
+			_col_size = other.cl_size();
+			_expr = other.rep();
+		}
 		template<typename T2, typename Expr2>
-		SMatrix(SMatrix<T2, Expr2> const & other) : _row_size(other.rw_size()), _col_size(other.cl_size()),
-			_storage(other.rep()) { }
-		//SMatrix(Expr const & other) : _row_size(other.rw_size()), _col_size(other.cl_size()),
-		//	_storage(other) { }
-		template<typename T2, typename Expr2>
-		SMatrix& operator= (SMatrix<T2, Expr2> const & other)
+		SMatrix(SMatrix<T2, Expr2> const & other)
 		{
 			_row_size = other.rw_size();
 			_col_size = other.cl_size();
-			_storage(other.rw_size(), std::vector<T>(other.cl_size(), 0));
+			_expr.resize(_row_size, _col_size, 0);
 			for (size_t i = 0; i < _row_size; i++) {
 				for (size_t j = 0; j < _col_size; j++) {
-					_storage[i][j] = other(i, j);
+					_expr(i, j) = other(i, j);
 				}
 			}
 		}
-		size_t rw_size() { return _row_size;  }
-		size_t cl_size() { return _col_size;  }
+		SMatrix(Expr const & other) : _row_size(other.rw_size()), 
+			_col_size(other.cl_size()), _expr(other){  }
+		SMatrix& operator= (const SMatrix& other) { 
+			_row_size = other.rw_size();
+			_col_size = other.cl_size();
+			_expr = other.rep();
+			return *this;
+		}
+		template<typename T2, typename Expr2>
+		SMatrix& operator= (SMatrix<T2, Expr2> const & other)
+		{
+			
+			_row_size = other.rw_size();
+			_col_size = other.cl_size();
+			_expr.resize(_row_size, _col_size, 0);
+			for (size_t i = 0; i < _row_size; i++) {
+				for (size_t j = 0; j < _col_size; j++) {
+					_expr(i,j) = other(i, j);
+				}
+			}
+			return *this;
+		}
+		size_t rw_size() const { return _row_size;  }
+		size_t cl_size() const { return _col_size;  }
 		T operator() (size_t i, size_t j) const {
-			return _storage[i][j] + _storage[i][j];
+			return _expr(i,j);
 		}
 		T& operator() (size_t i, size_t j) {
-			return _storage[i][j] + _storage[i][j];
+			return _expr(i,j);
 		}
 		Expr& rep() {
-			return _storage;
+			return _expr;
 		}
 		Expr const & rep() const {
-			return _storage;
+			return _expr;
 		}
 	private:
 		size_t _row_size;
 		size_t _col_size;
-		Expr _storage;
+		Expr _expr;
 	};
 	template<typename T, typename Expr1, typename Expr2>
 	class SMatrix_Add {
-		SMatrix_Add(Expr1 const & lhs, Expr2 const & rhs) : _lhs(lhs), _rhs(rhs) {	}
+	public:
+		SMatrix_Add(Expr1 const & lhs, Expr2 const & rhs) : _lhs(lhs), _rhs(rhs),_row_size(lhs.rw_size()),
+		_col_size(rhs.cl_size()){	}
+		SMatrix_Add& operator=(SMatrix_Add<T, Expr1, Expr2> const & other) {
+			_lhs = other._lhs;
+			_rhs = other._rhs;
+			return *this;
+		}
 		T operator() (size_t i, size_t j) const {
 			return _lhs(i,j)+ _rhs(i,j);
 		}
 		T& operator() (size_t i, size_t j) {
 			return _lhs(i, j) + _rhs(i, j);
 		}
-		size_t rw_size() { return _lhs.rw_size(); }
-		size_t cl_size() { return _lhs.cl_size(); }
+		size_t rw_size() const { return _row_size; }
+		size_t cl_size() const { return _col_size; }
 	private:
+		size_t _row_size;
+		size_t _col_size;
 		Expr1 const & _lhs;
 		Expr2 const & _rhs;
 	};
 	template<typename T, typename Expr1, typename Expr2>
 	class SMatrix_Mul {
-		SMatrix_Mul(Expr1 const & lhs, Expr2 const & rhs) : _lhs(lhs), _rhs(rhs) { }
+	public:
+		SMatrix_Mul(Expr1 const & lhs, Expr2 const & rhs) : _lhs(lhs), _rhs(rhs), _row_size(lhs.rw_size()),
+			_col_size(rhs.cl_size()) {	}
 		T operator() (size_t i, size_t j) const {
-			T ret;
+			T ret = 0;
 			for (size_t k = 0; k < _lhs.cl_size(); k++)
 			{
 				ret += _lhs(i, k) * _rhs(k, j);
@@ -505,20 +587,24 @@ namespace ww_simple_matrix {
 		T& operator() (size_t i, size_t j) {
 			return _lhs(i, j) + _rhs(i, j);
 		}
-		size_t rw_size() { return _lhs.rw_size(); }
-		size_t cl_size() { return _lhs.cl_size(); }
+		size_t rw_size() const { return _row_size; }
+		size_t cl_size() const { return _col_size; }
 	private:
+		size_t _row_size;
+		size_t _col_size;
 		Expr1 const & _lhs;
 		Expr2 const & _rhs;
 	};
 	template<typename T, typename Expr1, typename Expr2>
 	SMatrix<T, SMatrix_Add<T, Expr1, Expr2>> operator + (SMatrix<T, Expr1> const & lhs,
 		SMatrix<T, Expr2> const & rhs) {
+		assert(lhs.rw_size() == rhs.rw_size() && lhs.cl_size() == rhs.cl_size());
 		return SMatrix<T, SMatrix_Add<T, Expr1, Expr2>>(SMatrix_Add<T, Expr1, Expr2>(lhs.rep(), rhs.rep()));
 	}
 	template<typename T, typename Expr1, typename Expr2>
 	SMatrix<T, SMatrix_Mul<T, Expr1, Expr2>> operator * (SMatrix<T, Expr1> const & lhs,
 		SMatrix<T, Expr2> const & rhs) {
+		assert(lhs.cl_size() == rhs.rw_size());
 		return SMatrix<T, SMatrix_Mul<T, Expr1, Expr2>>(SMatrix_Mul<T, Expr1, Expr2>(lhs.rep(), rhs.rep()));
 	}
 }

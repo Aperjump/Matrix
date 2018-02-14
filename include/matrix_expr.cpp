@@ -28,7 +28,7 @@ namespace ww_clwrapper {
 			}
 			if (std::string(&plt_name[0]).find(pltfrm_name) != std::string::npos)
 			{
-				printf("%s", &plt_name[0]);
+				printf("%s\n", &plt_name[0]);
 				index = i;
 			}
 		}

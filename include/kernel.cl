@@ -12,7 +12,7 @@ __kernel void padding(const int M, const int N,
 		if (tx < M && ty < N) {
 			value = input[ty * M + tx];
 		} else {
-			value = 0.0f;
+			value = 0;
 		}
 		output[ty * M_Ex + tx] = value;
 	}
@@ -33,11 +33,11 @@ __kernel void core(const int M, const int N, const int K,
                       __global double* C) {
     const int row = get_local_id(0); 
     const int col = get_local_id(1); 
-    const int globalRow = TS*get_group_id(0) + row;
-    const int globalCol = TS*get_group_id(1) + col;
+    const int globalrow = TS*get_group_id(0) + row;
+    const int globalcol = TS*get_group_id(1) + col;
  
-    __local double Asub[TS][TS];
-    __local double Bsub[TS][TS];
+    __local double innerA[TS][TS];
+    __local double innerB[TS][TS];
  
     double acc[WPT];
     for (int w=0; w<WPT; w++) {
@@ -47,20 +47,31 @@ __kernel void core(const int M, const int N, const int K,
     const int numTiles = K/TS;
     for (int t=0; t<numTiles; t++) {
         for (int w=0; w<WPT; w++) {
-            const int tiledRow = TS*t + row;
-            const int tiledCol = TS*t + col;
-            Asub[col + w*RTS][row] = A[(tiledCol + w*RTS)*M + globalRow];
-            Bsub[col + w*RTS][row] = B[(globalCol + w*RTS)*K + tiledRow];
+            const int tilrow = TS*t + row;
+            const int tilcol = TS*t + col;
+            innerA[col + w*RTS][row] = A[(tilcol + w*RTS)*M + globalrow];
+            innerB[col + w*RTS][row] = B[(globalcol + w*RTS)*K + tilrow];
         }
         barrier(CLK_LOCAL_MEM_FENCE);
         for (int k=0; k<TS; k++) {
             for (int w=0; w<WPT; w++) {
-                acc[w] += Asub[k][row] * Bsub[col + w*RTS][k];
+                acc[w] += innerA[k][row] * innerB[col + w*RTS][k];
             }
         }
         barrier(CLK_LOCAL_MEM_FENCE);
     }
     for (int w=0; w<WPT; w++) {
-        C[(globalCol + w*RTS)*M + globalRow] = acc[w];
+        C[(globalcol + w*RTS)*M + globalrow] = acc[w];
     }
+}
+__kernel void add(const int M, const int N, 
+					const __global double* A,
+					const __global double* B,
+					__global double* output)
+{
+	const int globalrow = get_global_id(0);
+	const int globalcol = get_global_id(1);
+	double tmp = 0.0;
+	tmp = A[globalcol * M + globalrow] + B[globalcol * M + globalrow];
+	output[globalcol * M + globalrow] = tmp;
 }
