@@ -5,7 +5,11 @@
 #include <vector>
 #include <fstream>
 #include <cassert>
-#include <CL\cl.h>
+#ifdef __APPLE__
+#include <OpenCL/opencl.h>
+#else
+#include <CL/opencl.h>
+#endif
 //#include "openCL_wrapper.h"
 #define ker1 "core"
 #define add "add"
@@ -13,7 +17,7 @@
 #define TS 32
 #define WPT 8
 #define USE_GPU
-#define PRINT
+//#define PRINT
 
 namespace ww_clwrapper {
 	cl_platform_id choose_platform(const std::string& pltfrm_name);

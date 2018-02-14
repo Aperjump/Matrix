@@ -8,7 +8,7 @@
 #include "matrix_expr.h"
 #include "matrix.h"
 #define FILE_NAME "kernel.cl"
-
+#define USE_GPU
 int main()
 {
 	std::ofstream fs("extemp_addition_test.csv");

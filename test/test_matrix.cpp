@@ -9,6 +9,7 @@
 #include "matrix.h"
 #define FILE_NAME "kernel.cl"
 #define SIZE 5
+#define USE_GPU
 template<typename Expr>
 void print_all(Expr const & mat);
 int main()
