@@ -127,3 +127,46 @@ Here is my test result on NVIDIA 1060 GPU:
 ![double_mult](https://github.com/Aperjump/Matrix/blob/master/picture/double_mult.png)
 
 ## 3. SMatrix 
+
+SMatrix class is the normal expression template. The expression on the right hand side do not evaluate until calling `operator=` at left hand side. So there needs to be some middle stage object to store the operation, and find the value at final stage. An optimized compiler can make this process even faster and generate code like this:
+```
+e = a + b + c + d
+for (size_t i = 0; i < row; i++) {
+    for (size_t j = 0; j < col; j++) { 
+        e(i,j) = a(i,j) + b(i,j) + c(i,j) + d(i,j);
+    }
+}
+```
+Another important point is to implement one `operator = ` which accepts any expression. I did it by:
+```
+template<typename T2, typename Expr2>
+SMatrix& operator= (SMatrix<T2, Expr2> const & other)
+{
+	
+	_row_size = other.rw_size();
+	_col_size = other.cl_size();
+	_expr.resize(_row_size, _col_size, 0);
+	for (size_t i = 0; i < _row_size; i++) {
+		for (size_t j = 0; j < _col_size; j++) {
+			_expr(i,j) = other(i, j);
+		}
+	}
+	return *this;
+}
+```
+Add `operator+` and `operator*` needs to have special treatment:
+```
+template<typename T, typename Expr1, typename Expr2>
+SMatrix<T, SMatrix_Add<T, Expr1, Expr2>> operator + (SMatrix<T, Expr1> const & lhs,
+	SMatrix<T, Expr2> const & rhs) {
+	assert(lhs.rw_size() == rhs.rw_size() && lhs.cl_size() == rhs.cl_size());
+	return SMatrix<T, SMatrix_Add<T, Expr1, Expr2>>(SMatrix_Add<T, Expr1, Expr2>(lhs.rep(), rhs.rep()));
+}
+template<typename T, typename Expr1, typename Expr2>
+SMatrix<T, SMatrix_Mul<T, Expr1, Expr2>> operator * (SMatrix<T, Expr1> const & lhs,
+	SMatrix<T, Expr2> const & rhs) {
+	assert(lhs.cl_size() == rhs.rw_size());
+	return SMatrix<T, SMatrix_Mul<T, Expr1, Expr2>>(SMatrix_Mul<T, Expr1, Expr2>(lhs.rep(), rhs.rep()));
+}
+```
+The purpose of this expression template is to decrease temporary variable but this cannot be done by `A = A*B`, because this matrix multiplication requires to use the same value multiple times. This can be alleviated by implementing `*=` operator, but the code will become not easy to write(This problem can be eliminated by using `ww_matrix::Matrix` class, since most of its operator requires temporary variable). 
